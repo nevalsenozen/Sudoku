@@ -1,565 +1,612 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-// Pastel ve soft temalar
+const SIZE = 9;
+
 const THEMES = [
   {
-    name: "Pastel Turuncu",
-    "--bg": "#fdf6f0",
-    "--primary": "#ffb870",
-    "--accent": "#ffe0b2",
-    "--cell": "#fffdfa",
-    "--cell-selected": "#fff3e0",
-    "--cell-highlight": "#fff7e6",
-    "--cell-error": "#ffb3b3",
-    "--cell-fixed": "#ffb870",
-    "--text": "#2d2d2d",
-    "--button": "#ffb870",
-    "--button-text": "#fff",
-    "--block-border": "#ffd9b3",
+    bg: "#fdf6f0",
+    primary: "#ff9f43",
+    accent: "#ffe0b2",
+    cell: "#fffdfa",
+    selected: "#fff3e0",
+    highlight: "#fff8ec",
+    error: "#ffb3b3",
+    fixed: "#e67817",
+    text: "#2d2d2d",
+    border: "#ffd1a3",
   },
   {
-    name: "Pastel Mint",
-    "--bg": "#f3fdf9",
-    "--primary": "#7de2c5",
-    "--accent": "#d0f5e8",
-    "--cell": "#fafffd",
-    "--cell-selected": "#e0f7f1",
-    "--cell-highlight": "#e6f9f3",
-    "--cell-error": "#ffd6d6",
-    "--cell-fixed": "#7de2c5",
-    "--text": "#2d2d2d",
-    "--button": "#7de2c5",
-    "--button-text": "#fff",
-    "--block-border": "#b2f2e0",
+    bg: "#eefaf6",
+    primary: "#2bb3a3",
+    accent: "#c8f3ec",
+    cell: "#fbfffe",
+    selected: "#dff8f3",
+    highlight: "#effcf9",
+    error: "#ffb8b8",
+    fixed: "#168b7f",
+    text: "#20302e",
+    border: "#ace5dc",
   },
   {
-    name: "Pastel Mercan",
-    "--bg": "#fdf3f2",
-    "--primary": "#ffb3a7",
-    "--accent": "#ffe0db",
-    "--cell": "#fffafa",
-    "--cell-selected": "#ffe6e1",
-    "--cell-highlight": "#fff0ed",
-    "--cell-error": "#ffb3b3",
-    "--cell-fixed": "#ffb3a7",
-    "--text": "#2d2d2d",
-    "--button": "#ffb3a7",
-    "--button-text": "#fff",
-    "--block-border": "#ffd6d1",
+    bg: "#fff4f2",
+    primary: "#ef6f61",
+    accent: "#ffd2cc",
+    cell: "#fffdfc",
+    selected: "#ffe6e2",
+    highlight: "#fff1ee",
+    error: "#ffb3b3",
+    fixed: "#d95143",
+    text: "#342321",
+    border: "#ffc1b8",
   },
   {
-    name: "Pastel Yeşil",
-    "--bg": "#f3fdf4",
-    "--primary": "#b6e6b3",
-    "--accent": "#e0fbe0",
-    "--cell": "#fafffa",
-    "--cell-selected": "#e6fbe6",
-    "--cell-highlight": "#f0fdf0",
-    "--cell-error": "#ffd6d6",
-    "--cell-fixed": "#b6e6b3",
-    "--text": "#2d2d2d",
-    "--button": "#b6e6b3",
-    "--button-text": "#fff",
-    "--block-border": "#d1f7d1",
-  },
-  {
-    name: "Pastel Mavi",
-    "--bg": "#f3f7fd",
-    "--primary": "#a7c7ff",
-    "--accent": "#dbe8ff",
-    "--cell": "#fafcff",
-    "--cell-selected": "#e1edff",
-    "--cell-highlight": "#edf4ff",
-    "--cell-error": "#ffd6d6",
-    "--cell-fixed": "#a7c7ff",
-    "--text": "#2d2d2d",
-    "--button": "#a7c7ff",
-    "--button-text": "#fff",
-    "--block-border": "#c7dbff",
+    bg: "#f0f7ff",
+    primary: "#3b82f6",
+    accent: "#cfe3ff",
+    cell: "#fbfdff",
+    selected: "#e3f0ff",
+    highlight: "#f1f7ff",
+    error: "#ffb3b3",
+    fixed: "#2563eb",
+    text: "#1f2937",
+    border: "#b7d4ff",
   },
 ];
 
-// Sudoku üretici ve çözücü
-function generateSudoku(difficulty = "easy") {
-  const clues = { easy: 40, medium: 32, hard: 24 };
-  const size = 9;
-  const board = Array(size)
-    .fill(0)
-    .map(() => Array(size).fill(0));
+function getRandomTheme() {
+  return THEMES[Math.floor(Math.random() * THEMES.length)];
+}
 
-  function shuffle(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
+function shuffle(arr) {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
+
+function createEmptyBoard() {
+  return Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+}
+
+function isSafe(board, row, col, num) {
+  for (let i = 0; i < SIZE; i++) {
+    if (board[row][i] === num) return false;
+    if (board[i][col] === num) return false;
   }
 
-  function isSafe(board, row, col, num) {
-    for (let x = 0; x < 9; x++) {
-      if (board[row][x] === num || board[x][col] === num) return false;
+  const boxRow = Math.floor(row / 3) * 3;
+  const boxCol = Math.floor(col / 3) * 3;
+
+  for (let r = boxRow; r < boxRow + 3; r++) {
+    for (let c = boxCol; c < boxCol + 3; c++) {
+      if (board[r][c] === num) return false;
     }
-    const startRow = row - (row % 3),
-      startCol = col - (col % 3);
-    for (let i = 0; i < 3; i++)
-      for (let j = 0; j < 3; j++)
-        if (board[i + startRow][j + startCol] === num) return false;
-    return true;
   }
 
-  function fillBoard(board) {
-    for (let row = 0; row < 9; row++) {
-      for (let col = 0; col < 9; col++) {
-        if (board[row][col] === 0) {
-          let nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-          for (let num of nums) {
-            if (isSafe(board, row, col, num)) {
-              board[row][col] = num;
-              if (fillBoard(board)) return true;
-              board[row][col] = 0;
-            }
+  return true;
+}
+
+function fillBoard(board) {
+  for (let row = 0; row < SIZE; row++) {
+    for (let col = 0; col < SIZE; col++) {
+      if (board[row][col] === 0) {
+        const nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+        for (let num of nums) {
+          if (isSafe(board, row, col, num)) {
+            board[row][col] = num;
+
+            if (fillBoard(board)) return true;
+
+            board[row][col] = 0;
           }
-          return false;
         }
+
+        return false;
       }
     }
-    return true;
   }
 
-  function copyBoard(b) {
-    return b.map((row) => [...row]);
-  }
+  return true;
+}
 
-  function removeCells(board, cluesCount) {
-    let removed = 81 - cluesCount;
-    let puzzle = copyBoard(board);
-    while (removed > 0) {
-      let row = Math.floor(Math.random() * 9);
-      let col = Math.floor(Math.random() * 9);
-      if (puzzle[row][col] !== 0) {
-        puzzle[row][col] = 0;
-        removed--;
-      }
-    }
-    return puzzle;
-  }
-
+function generateSolvedBoard() {
+  const board = createEmptyBoard();
   fillBoard(board);
-  const solution = copyBoard(board);
-  const puzzle = removeCells(board, clues[difficulty]);
-  return { puzzle, solution };
+  return board;
 }
 
-function deepEqual(a, b) {
-  return a.every((row, i) => row.every((cell, j) => cell === b[i][j]));
+function removeNumbers(solvedBoard, difficulty) {
+  const puzzle = solvedBoard.map((row) => [...row]);
+
+  const removeCount =
+    difficulty === "easy" ? 36 : difficulty === "medium" ? 45 : 54;
+
+  let removed = 0;
+
+  while (removed < removeCount) {
+    const row = Math.floor(Math.random() * SIZE);
+    const col = Math.floor(Math.random() * SIZE);
+
+    if (puzzle[row][col] !== 0) {
+      puzzle[row][col] = 0;
+      removed++;
+    }
+  }
+
+  return puzzle;
 }
 
-function getEmptyCells(board) {
-  const empty = [];
-  for (let i = 0; i < 9; i++)
-    for (let j = 0; j < 9; j++) if (board[i][j] === 0) empty.push([i, j]);
-  return empty;
+function formatTime(totalSeconds) {
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+
+  return `${hours}:${minutes}:${seconds}`;
 }
 
-function countErrors(board, solution, fixed) {
-  let errors = 0;
-  for (let i = 0; i < 9; i++)
-    for (let j = 0; j < 9; j++)
-      if (
-        board[i][j] !== 0 &&
-        board[i][j] !== solution[i][j] &&
-        !fixed[i][j]
-      )
-        errors++;
-  return errors;
+function cloneBoard(board) {
+  return board.map((row) => [...row]);
 }
 
-function App() {
+export default function App() {
   const [screen, setScreen] = useState("menu");
   const [difficulty, setDifficulty] = useState("easy");
-  const [theme, setTheme] = useState(THEMES[0]);
-  const [sudoku, setSudoku] = useState(null);
-  const [userBoard, setUserBoard] = useState(null);
-  const [fixed, setFixed] = useState(null);
-  const [selected, setSelected] = useState(null); // [row, col]
-  const [score, setScore] = useState(1000);
-  const [timer, setTimer] = useState(0);
-  const [intervalId, setIntervalId] = useState(null);
-  const [errors, setErrors] = useState(0);
-  const [hintCount, setHintCount] = useState(0);
-  const [showHintAnim, setShowHintAnim] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [gameOver, setGameOver] = useState(false);
-  const [hintMsg, setHintMsg] = useState("");
+  const [theme, setTheme] = useState(getRandomTheme());
+
+  const [solution, setSolution] = useState([]);
+  const [puzzle, setPuzzle] = useState([]);
+  const [userBoard, setUserBoard] = useState([]);
+  const [fixedCells, setFixedCells] = useState([]);
+
+  const [selectedCell, setSelectedCell] = useState(null);
   const [activeNumber, setActiveNumber] = useState(null);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [lastWrong, setLastWrong] = useState({}); // {row_col: number}
+  const [score, setScore] = useState(1000);
+  const [errors, setErrors] = useState(0);
+  const [time, setTime] = useState(0);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [hintMessage, setHintMessage] = useState("");
+  const [showGiveUpModal, setShowGiveUpModal] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [revealedByHint, setRevealedByHint] = useState({});
+  const [showedSolution, setShowedSolution] = useState(false);
 
-  // Tema değişimi
-  function applyTheme(themeObj) {
-    Object.entries(themeObj).forEach(([key, value]) => {
-      if (key.startsWith("--")) {
-        document.documentElement.style.setProperty(key, value);
-      }
-    });
-    setTheme(themeObj);
-  }
+  const themeStyle = useMemo(
+    () => ({
+      "--bg": theme.bg,
+      "--primary": theme.primary,
+      "--accent": theme.accent,
+      "--cell": theme.cell,
+      "--cell-selected": theme.selected,
+      "--cell-highlight": theme.highlight,
+      "--cell-error": theme.error,
+      "--cell-fixed": theme.fixed,
+      "--text": theme.text,
+      "--button": theme.primary,
+      "--button-text": "#ffffff",
+      "--block-border": theme.border,
+    }),
+    [theme]
+  );
 
-  // Ana menüde random tema
-  useEffect(() => {
-    if (screen === "menu") {
-      const t = THEMES[Math.floor(Math.random() * THEMES.length)];
-      applyTheme(t);
-    }
-    // eslint-disable-next-line
-  }, [screen]);
+  function startGame(selectedDifficulty = difficulty) {
+    const solved = generateSolvedBoard();
+    const newPuzzle = removeNumbers(solved, selectedDifficulty);
 
-  // Oyun başlat
-  function startGame(diff = difficulty) {
-    const t = THEMES.filter((th) => th !== theme);
-    const newTheme = t[Math.floor(Math.random() * t.length)];
-    applyTheme(newTheme);
-    const { puzzle, solution } = generateSudoku(diff);
-    setSudoku({ puzzle, solution });
-    setUserBoard(puzzle.map((row) => [...row]));
-    setFixed(
-      puzzle.map((row) => row.map((cell) => cell !== 0))
-    );
-    setSelected(null);
-    setScore(1000);
-    setTimer(0);
-    setErrors(0);
-    setHintCount(0);
-    setShowHintAnim(false);
-    setShowConfirm(false);
-    setGameOver(false);
-    setHintMsg("");
+    setTheme(getRandomTheme());
+    setDifficulty(selectedDifficulty);
+    setSolution(solved);
+    setPuzzle(newPuzzle);
+    setUserBoard(cloneBoard(newPuzzle));
+    setFixedCells(newPuzzle.map((row) => row.map((cell) => cell !== 0)));
+    setSelectedCell(null);
     setActiveNumber(null);
-    setErrorMsg("");
-    setLastWrong({});
+    setScore(1000);
+    setErrors(0);
+    setTime(0);
+    setMessage("");
+    setErrorMessage("");
+    setHintMessage("");
+    setShowGiveUpModal(false);
+    setGameOver(false);
+    setRevealedByHint({});
+    setShowedSolution(false);
     setScreen("game");
   }
 
-  // Zamanlayıcı
-  useEffect(() => {
-    if (screen === "game" && !gameOver) {
-      const id = setInterval(() => {
-        setTimer((t) => t + 1);
-        setScore((s) => Math.max(0, s - 10));
-      }, 30000);
-      setIntervalId(id);
-      return () => clearInterval(id);
-    } else if (intervalId) {
-      clearInterval(intervalId);
-    }
-    // eslint-disable-next-line
-  }, [screen, gameOver]);
+  function goMenu() {
+    setTheme(getRandomTheme());
+    setScreen("menu");
+    setSelectedCell(null);
+    setActiveNumber(null);
+    setShowGiveUpModal(false);
+  }
 
-  // Hata sayacı
-  useEffect(() => {
-    if (userBoard && sudoku && fixed) {
-      setErrors(countErrors(userBoard, sudoku.solution, fixed));
-    }
-    // eslint-disable-next-line
-  }, [userBoard, sudoku, fixed]);
+  function changeScore(amount) {
+    setScore((prev) => Math.max(0, prev + amount));
+  }
 
-  // Oyun bitti mi?
-  useEffect(() => {
-    if (
-      userBoard &&
-      sudoku &&
-      deepEqual(userBoard, sudoku.solution) &&
-      !gameOver
-    ) {
-      setGameOver(true);
-      setScreen("finish");
-      if (intervalId) clearInterval(intervalId);
-    }
-    // eslint-disable-next-line
-  }, [userBoard, sudoku, gameOver]);
+  function isHighlightAllowed() {
+    return difficulty === "easy" || difficulty === "medium";
+  }
 
-  // Klavye desteği
-  useEffect(() => {
-    if (screen !== "game" || !userBoard || !selected || gameOver) return;
-    function handleKey(e) {
-      if (!selected) return;
-      if (e.key >= "1" && e.key <= "9") {
-        handleNumberInput(Number(e.key), true);
-      } else if (
-        e.key === "Backspace" ||
-        e.key === "Delete" ||
-        e.key === "Del"
-      ) {
-        handleDelete();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-    // eslint-disable-next-line
-  }, [selected, userBoard, gameOver, screen, difficulty]);
-
-  // Hücre seçimi
   function handleCellClick(row, col) {
-    if (fixed[row][col]) return;
-    setSelected([row, col]);
-    if (userBoard[row][col] !== 0) {
-      setActiveNumber(userBoard[row][col]);
-    }
-  }
+    const value = userBoard[row][col];
 
-  // Sayı butonları ve klavye
-  function handleNumberInput(num, fromKeyboard = false) {
-    if (!selected || gameOver) return;
-    const [row, col] = selected;
-    if (fixed[row][col]) return;
-    setActiveNumber(num);
-    // Hatalı giriş kontrolü
-    if (userBoard[row][col] === num) return; // Aynı sayı tekrar girilirse işlem yapma
-    const isWrong = sudoku.solution[row][col] !== num;
-    // Hatalı giriş tekrar tekrar sayılmasın
-    const wrongKey = `${row}_${col}`;
-    if (isWrong) {
-      if (lastWrong[wrongKey] === num) {
-        // Aynı yanlış tekrar girildi, hata sayma
-        setUserBoard((prev) => {
-          const newBoard = prev.map((r) => [...r]);
-          newBoard[row][col] = num;
-          return newBoard;
-        });
-        return;
-      }
-      setErrors((e) => e + 1);
-      setErrorMsg("Hatalı giriş!");
-      setTimeout(() => setErrorMsg(""), 1200);
-      setLastWrong((prev) => ({ ...prev, [wrongKey]: num }));
-    } else {
-      // Doğruysa o hücredeki yanlış kaydını sil
-      setLastWrong((prev) => {
-        const copy = { ...prev };
-        delete copy[wrongKey];
-        return copy;
-      });
-    }
-    const newBoard = userBoard.map((r) => [...r]);
-    newBoard[row][col] = num;
-    setUserBoard(newBoard);
-    if (isWrong) {
-      setScore((s) => Math.max(0, s - 30));
-    }
-  }
+    setSelectedCell({ row, col });
 
-  // Sil butonu ve klavye
-  function handleDelete() {
-    if (!selected || gameOver) return;
-    const [row, col] = selected;
-    if (fixed[row][col]) return;
-    if (userBoard[row][col] !== 0) {
-      const newBoard = userBoard.map((r) => [...r]);
-      newBoard[row][col] = 0;
-      setUserBoard(newBoard);
+    if (isHighlightAllowed() && value !== 0) {
+      setActiveNumber(value);
+    } else if (!isHighlightAllowed()) {
       setActiveNumber(null);
-      // Hatalı giriş kaydını da sil
-      setLastWrong((prev) => {
-        const copy = { ...prev };
-        delete copy[`${row}_${col}`];
-        return copy;
-      });
     }
   }
 
-  // İpucu
-  function handleHint() {
-    setHintMsg("");
-    if (!userBoard || !sudoku || gameOver) return;
-    if (score < 50) {
-      setHintMsg("Yeterli puanın yok");
+  function applyNumber(number) {
+    if (!selectedCell || gameOver) return;
+
+    const { row, col } = selectedCell;
+
+    if (fixedCells[row][col]) {
+      if (isHighlightAllowed() && userBoard[row][col] !== 0) {
+        setActiveNumber(userBoard[row][col]);
+      }
       return;
     }
-    const empty = getEmptyCells(userBoard);
-    if (empty.length === 0) return;
-    const idx = Math.floor(Math.random() * empty.length);
-    const [row, col] = empty[idx];
-    const newBoard = userBoard.map((r) => [...r]);
-    newBoard[row][col] = sudoku.solution[row][col];
-    setUserBoard(newBoard);
-    setScore((s) => Math.max(0, s - 50));
-    setHintCount((c) => c + 1);
-    setShowHintAnim([row, col]);
-    setTimeout(() => setShowHintAnim(false), 800);
-    setActiveNumber(sudoku.solution[row][col]);
+
+    const oldValue = userBoard[row][col];
+    const copy = cloneBoard(userBoard);
+    copy[row][col] = number;
+    setUserBoard(copy);
+
+    if (isHighlightAllowed()) {
+      setActiveNumber(number);
+    } else {
+      setActiveNumber(null);
+    }
+
+    setHintMessage("");
+
+    if (number !== solution[row][col] && oldValue !== number) {
+      setErrors((prev) => prev + 1);
+      changeScore(-30);
+      setErrorMessage("Hatalı giriş!");
+      setTimeout(() => setErrorMessage(""), 1200);
+    }
+
+    checkFinished(copy);
   }
 
-  // Çözümü Göster
-  function handleShowSolution() {
-    setShowConfirm(true);
+  function clearSelectedCell() {
+    if (!selectedCell || gameOver) return;
+
+    const { row, col } = selectedCell;
+
+    if (fixedCells[row][col]) return;
+
+    const copy = cloneBoard(userBoard);
+    copy[row][col] = 0;
+    setUserBoard(copy);
+    setActiveNumber(null);
   }
-  function confirmShowSolution() {
-    setUserBoard(sudoku.solution.map((row) => [...row]));
+
+  function getEmptyCells() {
+    const empty = [];
+
+    for (let row = 0; row < SIZE; row++) {
+      for (let col = 0; col < SIZE; col++) {
+        if (userBoard[row][col] === 0 && !fixedCells[row][col]) {
+          empty.push({ row, col });
+        }
+      }
+    }
+
+    return empty;
+  }
+
+  function getHint() {
+    if (gameOver) return;
+
+    if (score < 50) {
+      setHintMessage("Yeterli puanın yok kankim 😅");
+      return;
+    }
+
+    const emptyCells = getEmptyCells();
+
+    if (emptyCells.length === 0) {
+      setHintMessage("Boş kutu kalmadı.");
+      return;
+    }
+
+    const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    const { row, col } = randomCell;
+
+    const copy = cloneBoard(userBoard);
+    copy[row][col] = solution[row][col];
+
+    setUserBoard(copy);
+    setSelectedCell({ row, col });
+    setRevealedByHint((prev) => ({ ...prev, [`${row}-${col}`]: true }));
+
+    if (isHighlightAllowed()) {
+      setActiveNumber(solution[row][col]);
+    }
+
+    changeScore(-50);
+    setHintMessage("İpucu kullanıldı: -50 puan");
+    checkFinished(copy);
+  }
+
+  function giveUp() {
+    setUserBoard(cloneBoard(solution));
     setScore(0);
     setGameOver(true);
+    setShowedSolution(true);
+    setShowGiveUpModal(false);
     setScreen("finish");
-    setShowConfirm(false);
-    if (intervalId) clearInterval(intervalId);
+    setMessage("Pes ettin, çözüm gösterildi.");
   }
 
-  // Yeni Oyun
-  function handleNewGame() {
-    startGame(difficulty);
+  function checkFinished(boardToCheck = userBoard) {
+    for (let row = 0; row < SIZE; row++) {
+      for (let col = 0; col < SIZE; col++) {
+        if (boardToCheck[row][col] === 0) return false;
+        if (boardToCheck[row][col] !== solution[row][col]) return false;
+      }
+    }
+
+    setGameOver(true);
+    setScreen("finish");
+    setMessage("Helal! Sudoku tamamlandı 🎉");
+    return true;
   }
 
-  // Ana Menü
-  function handleMenu() {
-    setScreen("menu");
-    setSudoku(null);
-    setUserBoard(null);
-    setFixed(null);
-    setSelected(null);
-    setScore(1000);
-    setTimer(0);
-    setErrors(0);
-    setHintCount(0);
-    setShowHintAnim(false);
-    setShowConfirm(false);
-    setGameOver(false);
-    setHintMsg("");
-    setActiveNumber(null);
-    setErrorMsg("");
-    setLastWrong({});
+  function isCellWrong(row, col) {
+    return (
+      userBoard[row][col] !== 0 &&
+      !fixedCells[row][col] &&
+      userBoard[row][col] !== solution[row][col]
+    );
   }
 
-  // Süre formatı (hh:mm:ss)
-  function formatTime(sec) {
-    const h = Math.floor(sec / 3600)
-      .toString()
-      .padStart(2, "0");
-    const m = Math.floor((sec % 3600) / 60)
-      .toString()
-      .padStart(2, "0");
-    const s = (sec % 60).toString().padStart(2, "0");
-    return `${h}:${m}:${s}`;
+  function isRelatedCell(row, col) {
+    if (!selectedCell) return false;
+
+    const sameRow = selectedCell.row === row;
+    const sameCol = selectedCell.col === col;
+    const sameBox =
+      Math.floor(selectedCell.row / 3) === Math.floor(row / 3) &&
+      Math.floor(selectedCell.col / 3) === Math.floor(col / 3);
+
+    return sameRow || sameCol || sameBox;
   }
 
-  // Ana Menü
+  function getCellClass(row, col) {
+    let className = "cell";
+
+    if (fixedCells[row]?.[col]) className += " fixed";
+    if (selectedCell?.row === row && selectedCell?.col === col) {
+      className += " selected";
+    }
+    if (isRelatedCell(row, col)) className += " highlight";
+    if (isCellWrong(row, col)) className += " error";
+
+    if (
+      isHighlightAllowed() &&
+      activeNumber &&
+      userBoard[row]?.[col] === activeNumber
+    ) {
+      className += " same-number";
+    }
+
+    if ((col + 1) % 3 === 0 && col !== 8) className += " block-right";
+    if ((row + 1) % 3 === 0 && row !== 8) className += " block-bottom";
+
+    if (revealedByHint[`${row}-${col}`]) className += " hint-anim";
+
+    if (showedSolution && puzzle[row]?.[col] === 0) {
+      className += " solution-fill";
+    }
+
+    return className;
+  }
+
+  useEffect(() => {
+    if (screen !== "game" || gameOver) return;
+
+    const timer = setInterval(() => {
+      setTime((prev) => {
+        const next = prev + 1;
+
+        if (next % 30 === 0) {
+          setScore((scorePrev) => Math.max(0, scorePrev - 10));
+        }
+
+        return next;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [screen, gameOver]);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (screen !== "game" || gameOver) return;
+
+      if (e.key >= "1" && e.key <= "9") {
+        applyNumber(Number(e.key));
+      }
+
+      if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") {
+        clearSelectedCell();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
   if (screen === "menu") {
     return (
-      <div className="menu fade-in">
-        <div className="logo-card">
-          <span className="logo-sudoku-only">SUDOKU</span>
-        </div>
-        <div className="desc">
-          <p>
-            Zihnini zorla, puan topla! <br />
-            Modern, sade ve mobil uyumlu Sudoku deneyimi.
-          </p>
-        </div>
-        <div className="difficulty">
-          <span>Zorluk:</span>
-          <div className="diff-buttons">
-            <button
-              className={difficulty === "easy" ? "active" : ""}
-              onClick={() => setDifficulty("easy")}
-            >
-              Kolay
-            </button>
-            <button
-              className={difficulty === "medium" ? "active" : ""}
-              onClick={() => setDifficulty("medium")}
-            >
-              Orta
-            </button>
-            <button
-              className={difficulty === "hard" ? "active" : ""}
-              onClick={() => setDifficulty("hard")}
-            >
-              Zor
-            </button>
+      <div className="page" style={themeStyle}>
+        <main className="menu fade-in">
+          <div className="logo-card">
+          
+            <h1 className="sudoku-title">Sudoku</h1>
           </div>
-        </div>
-        <button className="start-btn" onClick={() => startGame()}>
-          Oyuna Başla
-        </button>
+
+          <p className="desc">
+            Zekanı zorlamaya hazır mısın? Seviyeni seç ve Sudoku meydan okumasına başla. 
+          </p>
+
+          <div className="difficulty">
+            <strong> </strong>
+
+            <div className="diff-buttons">
+              <button
+                className={difficulty === "easy" ? "active" : ""}
+                onClick={() => setDifficulty("easy")}
+              >
+                Kolay
+              </button>
+
+              <button
+                className={difficulty === "medium" ? "active" : ""}
+                onClick={() => setDifficulty("medium")}
+              >
+                Orta
+              </button>
+
+              <button
+                className={difficulty === "hard" ? "active" : ""}
+                onClick={() => setDifficulty("hard")}
+              >
+                Zor
+              </button>
+            </div>
+          </div>
+
+          <button className="start-btn" onClick={() => startGame(difficulty)}>
+            Oyuna Başla
+          </button>
+        </main>
       </div>
     );
   }
 
-  // Oyun Ekranı
-  if (screen === "game" && sudoku && userBoard && fixed) {
-    return (
-      <div className="game fade-in">
+  return (
+    <div className="page" style={themeStyle}>
+      <main className={screen === "finish" ? "finish fade-in" : "game fade-in"}>
         <div className="game-header">
-          <button className="menu-btn" onClick={handleMenu}>
+          <button className="menu-btn" onClick={goMenu}>
             Ana Menü
           </button>
+
           <div className="score">
             <span>Puan: {score}</span>
+            <span>Süre: {formatTime(time)}</span>
             <span>Hata: {errors}</span>
-            <span>Süre: {formatTime(timer)}</span>
           </div>
-          <button className="newgame-btn" onClick={handleNewGame}>
+
+          <button className="newgame-btn" onClick={() => startGame(difficulty)}>
             Yeni Oyun
           </button>
         </div>
-        <SudokuBoard
-          board={userBoard}
-          fixed={fixed}
-          selected={selected}
-          onCellClick={handleCellClick}
-          solution={sudoku.solution}
-          showHintAnim={showHintAnim}
-          activeNumber={activeNumber}
-          difficulty={difficulty}
-        />
-        <div className="number-pad">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-            <button
-              key={n}
-              onClick={() => {
-                handleNumberInput(n, false);
-                setActiveNumber(n);
-              }}
-              className="num-btn"
-              tabIndex={-1}
-            >
-              {n}
-            </button>
-          ))}
-          <button className="del-btn" onClick={handleDelete} tabIndex={-1}>
-            Sil
-          </button>
+
+        {screen === "finish" && (
+          <>
+            <h2>{message}</h2>
+            <div className="final-score">Final Puanı: {score}</div>
+
+            <div className="finish-actions">
+              <button className="newgame-btn" onClick={() => startGame(difficulty)}>
+                Tekrar Oyna
+              </button>
+
+              <button className="menu-btn" onClick={goMenu}>
+                Menü
+              </button>
+            </div>
+          </>
+        )}
+
+        <div
+          className={`sudoku-board ${
+            screen === "finish" ? "finish-board solution-board" : ""
+          }`}
+        >
+          {userBoard.map((row, rowIndex) =>
+            row.map((cell, colIndex) => (
+              <button
+                key={`${rowIndex}-${colIndex}`}
+                className={getCellClass(rowIndex, colIndex)}
+                onClick={() => handleCellClick(rowIndex, colIndex)}
+                type="button"
+              >
+                {cell === 0 ? "" : cell}
+              </button>
+            ))
+          )}
         </div>
-        <div className="game-actions">
-          <button
-            className="hint-btn"
-            onClick={handleHint}
-            disabled={score < 50}
-            title={score < 50 ? "Yeterli puanın yok" : ""}
-          >
-            İpucu Al (-50)
-          </button>
-          <button className="giveup-btn" onClick={handleShowSolution}>
-            Pes Et / Çözümü Göster
-          </button>
-        </div>
-        {hintMsg && <div className="hint-msg">{hintMsg}</div>}
-        {errorMsg && <div className="error-msg">{errorMsg}</div>}
-        {showConfirm && (
+
+        {screen === "game" && (
+          <>
+            <div className="number-pad">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                <button
+                  key={num}
+                  className="num-btn"
+                  onClick={() => applyNumber(num)}
+                  type="button"
+                >
+                  {num}
+                </button>
+              ))}
+
+              <button className="del-btn" onClick={clearSelectedCell} type="button">
+                Sil
+              </button>
+            </div>
+
+            <div className="game-actions">
+              <button
+                className="hint-btn"
+                onClick={getHint}
+                disabled={score < 50}
+                type="button"
+              >
+                İpucu Al -50
+              </button>
+
+              <button
+                className="giveup-btn"
+                onClick={() => setShowGiveUpModal(true)}
+                type="button"
+              >
+                Pes Et
+              </button>
+            </div>
+
+            {hintMessage && <p className="hint-msg">{hintMessage}</p>}
+            {errorMessage && <p className="error-msg">{errorMessage}</p>}
+          </>
+        )}
+
+        {showGiveUpModal && (
           <div className="modal">
             <div className="modal-content">
-              <p>
-                Çözümü görmek istediğine emin misin? <br />
-                Puanın 0 olacak.
-              </p>
+              <h3>Emin misin?</h3>
+              <p>Çözümü gösterirsen puanın 0 olacak.</p>
+
               <div className="modal-actions">
-                <button
-                  className="modal-btn"
-                  onClick={confirmShowSolution}
-                >
-                  Evet, Göster
+                <button className="modal-btn" onClick={giveUp}>
+                  Evet, göster
                 </button>
+
                 <button
                   className="modal-btn"
-                  onClick={() => setShowConfirm(false)}
+                  onClick={() => setShowGiveUpModal(false)}
                 >
                   Vazgeç
                 </button>
@@ -567,134 +614,7 @@ function App() {
             </div>
           </div>
         )}
-      </div>
-    );
-  }
-
-  // Oyun Bitti Ekranı
-  if (screen === "finish" && sudoku && userBoard) {
-    // Çözümü gösterildi mi? (puan 0 ve userBoard çözümle aynıysa)
-    const isSolutionShown = score === 0 && deepEqual(userBoard, sudoku.solution);
-    return (
-      <div className="finish fade-in">
-        <h2>{isSolutionShown ? "Çözüm" : "Tebrikler!"}</h2>
-        <p>
-          {isSolutionShown ? (
-            <>Sudoku'nun çözümü aşağıda gösterilmiştir.</>
-          ) : (
-            <>
-              Sudoku'yu tamamladın.<br />
-              Final Puanın: <span className="final-score">{score}</span>
-            </>
-          )}
-        </p>
-        <div className="finish-actions">
-          <button className="newgame-btn" onClick={handleNewGame}>
-            Yeni Oyun
-          </button>
-          <button className="menu-btn" onClick={handleMenu}>
-            Ana Menü
-          </button>
-        </div>
-        <div className="finish-board solution-board">
-          <SudokuBoard
-            board={sudoku.solution}
-            fixed={fixed}
-            selected={null}
-            solution={sudoku.solution}
-            showHintAnim={false}
-            activeNumber={null}
-            difficulty={difficulty}
-            showSolutionHighlight={isSolutionShown}
-            userBoard={userBoard}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Yükleniyor
-  return (
-    <div className="loading">
-      <div className="loader"></div>
-      <span>Yükleniyor...</span>
+      </main>
     </div>
   );
 }
-
-// Sudoku Tahtası Bileşeni
-function SudokuBoard({
-  board,
-  fixed,
-  selected,
-  onCellClick,
-  solution,
-  showHintAnim,
-  activeNumber,
-  difficulty,
-  showSolutionHighlight = false,
-  userBoard = null,
-}) {
-  function getCellClass(i, j) {
-    const isSelected = selected && selected[0] === i && selected[1] === j;
-    const isFixed = fixed[i][j];
-    const isError =
-      board[i][j] !== 0 && board[i][j] !== solution[i][j] && !isFixed;
-    const isHint =
-      showHintAnim &&
-      Array.isArray(showHintAnim) &&
-      showHintAnim[0] === i &&
-      showHintAnim[1] === j;
-    const blockClass =
-      (j === 2 || j === 5 ? " block-right" : "") +
-      (i === 2 || i === 5 ? " block-bottom" : "");
-    let sameNumber = "";
-    if (
-      (difficulty === "easy" || difficulty === "medium") &&
-      activeNumber &&
-      board[i][j] === activeNumber &&
-      !isError
-    ) {
-      sameNumber = " same-number";
-    }
-    let solutionFill = "";
-    if (
-      showSolutionHighlight &&
-      userBoard &&
-      !fixed[i][j] &&
-      userBoard[i][j] !== solution[i][j]
-    ) {
-      solutionFill = " solution-fill";
-    }
-    return (
-      "cell" +
-      (isFixed ? " fixed" : "") +
-      (isSelected ? " selected" : "") +
-      (isError ? " error" : "") +
-      (isHint ? " hint-anim" : "") +
-      sameNumber +
-      solutionFill +
-      blockClass
-    );
-  }
-
-  return (
-    <div className="sudoku-board">
-      {board.map((row, i) =>
-        row.map((cell, j) => (
-          <div
-            key={i + "-" + j}
-            className={getCellClass(i, j)}
-            onClick={() => onCellClick && onCellClick(i, j)}
-            tabIndex={0}
-            aria-label={`Satır ${i + 1}, Sütun ${j + 1}`}
-          >
-            {cell !== 0 ? cell : ""}
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
-export default App;
