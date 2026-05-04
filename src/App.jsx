@@ -192,7 +192,9 @@ function App() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [hintMsg, setHintMsg] = useState("");
-  const boardRef = useRef(null);
+  const [activeNumber, setActiveNumber] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [lastWrong, setLastWrong] = useState({}); // {row_col: number}
 
   // Tema değişimi
   function applyTheme(themeObj) {
@@ -233,6 +235,9 @@ function App() {
     setShowConfirm(false);
     setGameOver(false);
     setHintMsg("");
+    setActiveNumber(null);
+    setErrorMsg("");
+    setLastWrong({});
     setScreen("game");
   }
 
@@ -280,7 +285,7 @@ function App() {
     function handleKey(e) {
       if (!selected) return;
       if (e.key >= "1" && e.key <= "9") {
-        handleNumberInput(Number(e.key));
+        handleNumberInput(Number(e.key), true);
       } else if (
         e.key === "Backspace" ||
         e.key === "Delete" ||
@@ -292,26 +297,55 @@ function App() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
     // eslint-disable-next-line
-  }, [selected, userBoard, gameOver, screen]);
+  }, [selected, userBoard, gameOver, screen, difficulty]);
 
   // Hücre seçimi
   function handleCellClick(row, col) {
     if (fixed[row][col]) return;
     setSelected([row, col]);
+    if (userBoard[row][col] !== 0) {
+      setActiveNumber(userBoard[row][col]);
+    }
   }
 
   // Sayı butonları ve klavye
-  function handleNumberInput(num) {
+  function handleNumberInput(num, fromKeyboard = false) {
     if (!selected || gameOver) return;
     const [row, col] = selected;
     if (fixed[row][col]) return;
-    const newBoard = userBoard.map((r) => [...r]);
-    if (userBoard[row][col] !== num) {
-      newBoard[row][col] = num;
-      setUserBoard(newBoard);
-      if (sudoku.solution[row][col] !== num) {
-        setScore((s) => Math.max(0, s - 30));
+    setActiveNumber(num);
+    // Hatalı giriş kontrolü
+    if (userBoard[row][col] === num) return; // Aynı sayı tekrar girilirse işlem yapma
+    const isWrong = sudoku.solution[row][col] !== num;
+    // Hatalı giriş tekrar tekrar sayılmasın
+    const wrongKey = `${row}_${col}`;
+    if (isWrong) {
+      if (lastWrong[wrongKey] === num) {
+        // Aynı yanlış tekrar girildi, hata sayma
+        setUserBoard((prev) => {
+          const newBoard = prev.map((r) => [...r]);
+          newBoard[row][col] = num;
+          return newBoard;
+        });
+        return;
       }
+      setErrors((e) => e + 1);
+      setErrorMsg("Hatalı giriş!");
+      setTimeout(() => setErrorMsg(""), 1200);
+      setLastWrong((prev) => ({ ...prev, [wrongKey]: num }));
+    } else {
+      // Doğruysa o hücredeki yanlış kaydını sil
+      setLastWrong((prev) => {
+        const copy = { ...prev };
+        delete copy[wrongKey];
+        return copy;
+      });
+    }
+    const newBoard = userBoard.map((r) => [...r]);
+    newBoard[row][col] = num;
+    setUserBoard(newBoard);
+    if (isWrong) {
+      setScore((s) => Math.max(0, s - 30));
     }
   }
 
@@ -324,6 +358,13 @@ function App() {
       const newBoard = userBoard.map((r) => [...r]);
       newBoard[row][col] = 0;
       setUserBoard(newBoard);
+      setActiveNumber(null);
+      // Hatalı giriş kaydını da sil
+      setLastWrong((prev) => {
+        const copy = { ...prev };
+        delete copy[`${row}_${col}`];
+        return copy;
+      });
     }
   }
 
@@ -346,6 +387,7 @@ function App() {
     setHintCount((c) => c + 1);
     setShowHintAnim([row, col]);
     setTimeout(() => setShowHintAnim(false), 800);
+    setActiveNumber(sudoku.solution[row][col]);
   }
 
   // Çözümü Göster
@@ -381,15 +423,21 @@ function App() {
     setShowConfirm(false);
     setGameOver(false);
     setHintMsg("");
+    setActiveNumber(null);
+    setErrorMsg("");
+    setLastWrong({});
   }
 
-  // Süre formatı
+  // Süre formatı (hh:mm:ss)
   function formatTime(sec) {
-    const m = Math.floor(sec / 60)
+    const h = Math.floor(sec / 3600)
+      .toString()
+      .padStart(2, "0");
+    const m = Math.floor((sec % 3600) / 60)
       .toString()
       .padStart(2, "0");
     const s = (sec % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
+    return `${h}:${m}:${s}`;
   }
 
   // Ana Menü
@@ -459,12 +507,17 @@ function App() {
           onCellClick={handleCellClick}
           solution={sudoku.solution}
           showHintAnim={showHintAnim}
+          activeNumber={activeNumber}
+          difficulty={difficulty}
         />
         <div className="number-pad">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
             <button
               key={n}
-              onClick={() => handleNumberInput(n)}
+              onClick={() => {
+                handleNumberInput(n, false);
+                setActiveNumber(n);
+              }}
               className="num-btn"
               tabIndex={-1}
             >
@@ -489,6 +542,7 @@ function App() {
           </button>
         </div>
         {hintMsg && <div className="hint-msg">{hintMsg}</div>}
+        {errorMsg && <div className="error-msg">{errorMsg}</div>}
         {showConfirm && (
           <div className="modal">
             <div className="modal-content">
@@ -519,12 +573,20 @@ function App() {
 
   // Oyun Bitti Ekranı
   if (screen === "finish" && sudoku && userBoard) {
+    // Çözümü gösterildi mi? (puan 0 ve userBoard çözümle aynıysa)
+    const isSolutionShown = score === 0 && deepEqual(userBoard, sudoku.solution);
     return (
       <div className="finish fade-in">
-        <h2>Tebrikler!</h2>
+        <h2>{isSolutionShown ? "Çözüm" : "Tebrikler!"}</h2>
         <p>
-          Sudoku'yu tamamladın.<br />
-          Final Puanın: <span className="final-score">{score}</span>
+          {isSolutionShown ? (
+            <>Sudoku'nun çözümü aşağıda gösterilmiştir.</>
+          ) : (
+            <>
+              Sudoku'yu tamamladın.<br />
+              Final Puanın: <span className="final-score">{score}</span>
+            </>
+          )}
         </p>
         <div className="finish-actions">
           <button className="newgame-btn" onClick={handleNewGame}>
@@ -534,13 +596,17 @@ function App() {
             Ana Menü
           </button>
         </div>
-        <div className="finish-board">
+        <div className="finish-board solution-board">
           <SudokuBoard
-            board={userBoard}
+            board={sudoku.solution}
             fixed={fixed}
             selected={null}
             solution={sudoku.solution}
             showHintAnim={false}
+            activeNumber={null}
+            difficulty={difficulty}
+            showSolutionHighlight={isSolutionShown}
+            userBoard={userBoard}
           />
         </div>
       </div>
@@ -564,52 +630,68 @@ function SudokuBoard({
   onCellClick,
   solution,
   showHintAnim,
+  activeNumber,
+  difficulty,
+  showSolutionHighlight = false,
+  userBoard = null,
 }) {
-  const selectedValue =
-    selected && board[selected[0]][selected[1]] !== 0
-      ? board[selected[0]][selected[1]]
-      : null;
+  function getCellClass(i, j) {
+    const isSelected = selected && selected[0] === i && selected[1] === j;
+    const isFixed = fixed[i][j];
+    const isError =
+      board[i][j] !== 0 && board[i][j] !== solution[i][j] && !isFixed;
+    const isHint =
+      showHintAnim &&
+      Array.isArray(showHintAnim) &&
+      showHintAnim[0] === i &&
+      showHintAnim[1] === j;
+    const blockClass =
+      (j === 2 || j === 5 ? " block-right" : "") +
+      (i === 2 || i === 5 ? " block-bottom" : "");
+    let sameNumber = "";
+    if (
+      (difficulty === "easy" || difficulty === "medium") &&
+      activeNumber &&
+      board[i][j] === activeNumber &&
+      !isError
+    ) {
+      sameNumber = " same-number";
+    }
+    let solutionFill = "";
+    if (
+      showSolutionHighlight &&
+      userBoard &&
+      !fixed[i][j] &&
+      userBoard[i][j] !== solution[i][j]
+    ) {
+      solutionFill = " solution-fill";
+    }
+    return (
+      "cell" +
+      (isFixed ? " fixed" : "") +
+      (isSelected ? " selected" : "") +
+      (isError ? " error" : "") +
+      (isHint ? " hint-anim" : "") +
+      sameNumber +
+      solutionFill +
+      blockClass
+    );
+  }
 
   return (
     <div className="sudoku-board">
       {board.map((row, i) =>
-        row.map((cell, j) => {
-          const isSelected =
-            selected && selected[0] === i && selected[1] === j;
-          const isFixed = fixed[i][j];
-          const isError =
-            cell !== 0 && cell !== solution[i][j] && !isFixed;
-          const isSameValue =
-            selectedValue && cell === selectedValue && cell !== 0;
-          const isHint =
-            showHintAnim &&
-            Array.isArray(showHintAnim) &&
-            showHintAnim[0] === i &&
-            showHintAnim[1] === j;
-          // 3x3 blok çizgileri için class
-          const blockClass =
-            (j === 2 || j === 5 ? " block-right" : "") +
-            (i === 2 || i === 5 ? " block-bottom" : "");
-          return (
-            <div
-              key={i + "-" + j}
-              className={
-                "cell" +
-                (isFixed ? " fixed" : "") +
-                (isSelected ? " selected" : "") +
-                (isSameValue ? " highlight" : "") +
-                (isError ? " error" : "") +
-                (isHint ? " hint-anim" : "") +
-                blockClass
-              }
-              onClick={() => onCellClick && onCellClick(i, j)}
-              tabIndex={0}
-              aria-label={`Satır ${i + 1}, Sütun ${j + 1}`}
-            >
-              {cell !== 0 ? cell : ""}
-            </div>
-          );
-        })
+        row.map((cell, j) => (
+          <div
+            key={i + "-" + j}
+            className={getCellClass(i, j)}
+            onClick={() => onCellClick && onCellClick(i, j)}
+            tabIndex={0}
+            aria-label={`Satır ${i + 1}, Sütun ${j + 1}`}
+          >
+            {cell !== 0 ? cell : ""}
+          </div>
+        ))
       )}
     </div>
   );
